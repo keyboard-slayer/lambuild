@@ -481,6 +481,7 @@ static SCM define_recipe(SCM name_scm, SCM args)
 
     scm_c_define(varname, recipe_scm);
 
+    free(varname);
     return SCM_ELISP_NIL;
 }
 
