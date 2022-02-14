@@ -5,13 +5,10 @@ CFLAGS :=								\
 	-Wextra								\
 	-Werror								\
 	-ggdb								\
-	-fsanitize=undefined				\
-	-fsanitize=address					\
-	`pkg-config --cflags guile-2.2`		\
+	`pkg-config --cflags guile-2.2`		
 
 LDFLAGS += 							\
-    -fsanitize=undefined 			\
-    -fsanitize=address				\
+	-lpthread						\
 	`pkg-config --libs guile-2.2`	\
 	-lm
 
@@ -32,6 +29,11 @@ $(TARGET): $(OBJ)
 	@$(CC) $(LDFLAGS) -o $@ $^
 
 all: $(TARGET)
+
+install: $(TARGET)
+	mkdir -p ${DESTDIR}${PREFIX}/bin
+	cp -f lambuild ${DESTDIR}${PREFIX}/bin
+	chmod 755 ${DESTDIR}${PREFIX}/bin/lambuild
 
 clean: 
 	-rm -r $(BUILD_DIRECTORY)

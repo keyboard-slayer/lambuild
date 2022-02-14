@@ -1,3 +1,4 @@
+#include "libguile/symbols.h"
 #include <assert.h>
 #include <errno.h>
 #include <dirent.h>
@@ -10,6 +11,7 @@
 #include <sys/stat.h>
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static char *goal = NULL;
 
 struct source_object_pair 
 {
@@ -25,6 +27,27 @@ struct compile_args
     size_t pair_count;
     SCM *obj_files;
 };
+
+static char **scm_to_symbol_list(SCM list)
+{
+    assert(!SCM_UNBNDP(list));
+
+    size_t length = scm_to_size_t(scm_length(list));
+
+    char **ret = malloc(sizeof(char *) * (length + 1));
+    assert(ret != NULL);
+
+    for (size_t i = 0; i < length; i++)
+    {
+        SCM item = scm_list_ref(list, scm_from_size_t(i));
+        ret[i] = scm_to_stringn(scm_symbol_to_string(item), NULL, "ascii", SCM_FAILED_CONVERSION_ERROR);
+    }
+
+    ret[length] = NULL;
+
+    return ret;
+}
+
 
 static char **scm_to_string_list(SCM list)
 {
@@ -417,11 +440,57 @@ static SCM find_file_by_ext(SCM dirname_scm, SCM ext_scm)
     return SCM_ELISP_NIL;
 }
 
+static SCM default_goal(SCM fn_symbol)
+{
+    SCM fn_name = scm_symbol_to_string(fn_symbol);
+    char *recipe_name = scm_to_stringn(fn_name, NULL, "ascii", SCM_FAILED_CONVERSION_ERROR);
+    goal = calloc(strlen(recipe_name) + 21, 1);
+
+    sprintf(goal, "__lambuild_recipe_%s__", recipe_name);
+
+    return SCM_ELISP_NIL;
+}
+
+static SCM define_recipe(SCM name_scm, SCM args)
+{
+    SCM recipe_keyword = scm_from_utf8_keyword("recipe");
+    SCM deps_keyword = scm_from_utf8_keyword("deps");
+
+    SCM recipe_scm = SCM_UNDEFINED;
+    SCM deps_scm = SCM_UNDEFINED;
+
+    scm_c_bind_keyword_arguments("define-goal", args, 0, recipe_keyword, &recipe_scm, deps_keyword, &deps_scm);
+
+    if (!SCM_UNBNDP(deps_scm))
+    {
+        char **deps_name = scm_to_symbol_list(deps_scm);
+
+        for (size_t i = 0; deps_name[i] != NULL; i++)
+        {
+            char *varname = calloc(strlen(deps_name[i]) + 21, 1);
+            sprintf(varname, "__lambuild_recipe_%s__", deps_name[i]);
+            scm_call_0(scm_variable_ref(scm_c_lookup(varname)));
+            free(varname);
+        }
+    }
+
+    char *recipe_name = scm_to_stringn(scm_symbol_to_string(name_scm), NULL, "ascii", SCM_FAILED_CONVERSION_ERROR);
+    char *varname = calloc(strlen(recipe_name) + 21, 1);
+
+    sprintf(varname, "__lambuild_recipe_%s__", recipe_name);
+
+    scm_c_define(varname, recipe_scm);
+
+    return SCM_ELISP_NIL;
+}
+
 static void *register_functions([[maybe_unused]] void *data)
 {
     scm_c_define_gsubr("compile-files", 0, 0, 1, &compile_files);
     scm_c_define_gsubr("link-executable", 0, 0, 1, &link_executable);
     scm_c_define_gsubr("find-file-by-ext", 2, 0, 0, &find_file_by_ext);
+    scm_c_define_gsubr("default-goal", 1, 0, 0, &default_goal);
+    scm_c_define_gsubr("define-recipe", 1, 0, 1, &define_recipe);
 
     return NULL;
 }
@@ -429,18 +498,24 @@ static void *register_functions([[maybe_unused]] void *data)
 int main(int argc, char **argv)
 {
     scm_with_guile(&register_functions, NULL);
+    scm_c_primitive_load("build.scm");
 
-    if (argc == 1)
+    if (argc != 1)
     {
-        scm_c_primitive_load("build.scm");
+        char *varname = calloc(strlen(argv[1]) + 21, 1);
+        sprintf(varname, "__lambuild_recipe_%s__", argv[1]);
+        scm_call_0(scm_variable_ref(scm_c_lookup(varname)));
+        free(varname);
+
+        return 0;
     }
-    else  
-    {
-        char *tmp = strdup(argv[1]);
-        chdir(dirname(tmp));
 
-        scm_c_primitive_load(basename(argv[1]));
-        free(tmp);
+    if (goal != NULL)
+    {
+        scm_call_0(scm_variable_ref(scm_c_lookup(goal)));
+        free(goal);
+
+        return 0;
     }
 
     return 0;
