@@ -94,9 +94,7 @@ static void mkparent(char const *s)
     char *parent_path = dirname(path);
     char *buffer = calloc(strlen(parent_path) + 10, 1);
 
-    strcat(buffer, "mkdir -p ");
-    strcat(buffer, parent_path);
-
+    sprintf(buffer, "mkdir -p %s", parent_path);
     system(buffer);
 
     free(buffer);
@@ -126,28 +124,19 @@ static void *compile_c_file(void *data)
             return NULL;
         }
 
-        size_t length = strlen(arg->cc) + strlen(arg->file_out[i].source) + strlen(arg->file_out[i].object) + array_length(arg->cflags, 1) + 30;
+        size_t cflags_len = array_length(arg->cflags, 1) + 1;
+        size_t length = strlen(arg->cc) + strlen(arg->file_out[i].source) + strlen(arg->file_out[i].object) + cflags_len + 30;
 
         char *buf = calloc(length, 1);
-        memcpy(buf, arg->cc, strlen(arg->cc));
-        strcat(buf, " ");
+        char *cflag_buf = calloc(cflags_len, 1);
 
         for (size_t i = 0; arg->cflags != NULL && arg->cflags[i] != NULL; i++)
         {
-            strcat(buf, arg->cflags[i]);
-            strcat(buf, " ");
+            strcat(cflag_buf, arg->cflags[i]);
+            strcat(cflag_buf, " ");
         }
 
-        strcat(buf, arg->file_out[i].source);
-        strcat(buf, " ");
-        strcat(buf, "-c");
-        strcat(buf, " ");
-        strcat(buf, "-o");
-        strcat(buf, " ");
-        strcat(buf, arg->file_out[i].object);
-        strcat(buf, " ");
-        strcat(buf, ">/dev/null 2>.err");
-
+        sprintf(buf, "%s %s %s -c -o %s >/dev/null 2>.err", arg->cc, cflag_buf, arg->file_out[i].source, arg->file_out->object);
 
         if (system(buf) != 0)
         {
@@ -157,6 +146,7 @@ static void *compile_c_file(void *data)
 
         system("rm .err");
         free(buf);
+        free(cflag_buf);
     }
 
     return NULL;
@@ -332,28 +322,25 @@ static SCM link_executable(SCM args)
         ldflags = scm_to_string_list(ldflags_scm);
     }
 
-    size_t length = strlen(ld) + strlen(out) + array_length(objs, 1) + array_length(ldflags, 1) + 23;
+    size_t file_length = array_length(objs, 1) + array_length(ldflags, 1) + 1;
+    size_t length = strlen(ld) + strlen(out) + file_length + 23;
 
     char *buf = calloc(length, 1);
-    memcpy(buf, ld, strlen(ld));
-    strcat(buf, " ");
+    char *files = calloc(file_length, 1);
+
+    for (size_t i = 0; objs[i] != NULL; i++)
+    {
+        strcat(files, objs[i]);
+        strcat(files, " ");
+    }
 
     for (size_t i = 0; ldflags != NULL && ldflags[i] != NULL; i++)
     {
-        strcat(buf, ldflags[i]);
-        strcat(buf, " ");
+        strcat(files, ldflags[i]);
+        strcat(files, " ");
     }
     
-    for (size_t i = 0; objs[i] != NULL; i++)
-    {
-        strcat(buf, objs[i]);
-        strcat(buf, " ");
-    }
-
-    strcat(buf, "-o");
-    strcat(buf, " ");
-    strcat(buf, out);
-    strcat(buf, ">/dev/null 2>.err");
+    sprintf(buf, "%s %s -o %s >/dev/null 2>.err", ld, files, out);
 
     if (system(buf) != 0)
     {
@@ -371,6 +358,7 @@ static SCM link_executable(SCM args)
     free(ld);
     free(out);
     free(buf);
+    free(files);
 
     return SCM_ELISP_NIL;
 }
@@ -395,9 +383,7 @@ static SCM find_file_by_ext(SCM dirname_scm, SCM ext_scm)
             if (dir->d_type == DT_DIR)
             {
                 char *path = calloc(strlen(dirname) + strlen(dir->d_name) + 2, 1);
-                memcpy(path, dirname, strlen(dirname));
-                strcat(path, "/");
-                strcat(path, dir->d_name);
+                sprintf(path, "%s/%s", dirname, dir->d_name);
 
                 SCM filename = scm_from_stringn(path, strlen(path), "ascii", SCM_FAILED_CONVERSION_ERROR);
                 SCM inside = find_file_by_ext(filename, ext_scm);
@@ -410,9 +396,7 @@ static SCM find_file_by_ext(SCM dirname_scm, SCM ext_scm)
             {
                 char *point;
                 char *path = calloc(strlen(dir->d_name) + strlen(dirname) + 2, 1);
-                memcpy(path, dirname, strlen(dirname));
-                strcat(path, "/");
-                strcat(path, dir->d_name);
+                sprintf(path, "%s/%s", dirname, dir->d_name);
 
                 if ((point = strrchr(dir->d_name, '.')) != NULL ) 
                 {
