@@ -319,6 +319,11 @@ static SCM link_executable(SCM args)
     char *ld;
     char *out;
 
+    if (scm_to_size_t(scm_length(objects)) == 0)
+    {
+        return SCM_ELISP_NIL;
+    }
+
     char **objs = scm_to_string_list(objects);
     char **ldflags = NULL;
 
