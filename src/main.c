@@ -1,4 +1,3 @@
-#include "libguile/symbols.h"
 #include <assert.h>
 #include <errno.h>
 #include <dirent.h>
@@ -61,6 +60,12 @@ static char **scm_to_string_list(SCM list)
     for (size_t i = 0; i < length; i++)
     {
         SCM item = scm_list_ref(list, scm_from_size_t(i));
+
+        if (scm_is_pair(item))
+        {
+            item = scm_eval(item, scm_interaction_environment());
+        }
+
         ret[i] = scm_to_stringn(item, NULL, "ascii", SCM_FAILED_CONVERSION_ERROR);
     }
 
